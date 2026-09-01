@@ -1,0 +1,385 @@
+<Window x:Class="ScoreCap.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ScoreCap.ViewModels"
+        xmlns:conv="clr-namespace:ScoreCap.Converters"
+        xmlns:models="clr-namespace:ScoreCap.Models"
+        Title="{Binding ProjectDisplayName, StringFormat='유튜브 악보 메이커 v2.1.0 – {0}'}" Height="968" Width="1480"
+        MinHeight="640" MinWidth="1100"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource WindowBackgroundBrush}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <conv:EqualityToBooleanConverter x:Key="EqConv"/>
+        <conv:NullToVisibilityConverter x:Key="NullToVis"/>
+        <conv:DuplicateOpacityConverter x:Key="DupOpacity"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
+    <Window.DataContext>
+        <vm:MainViewModel/>
+    </Window.DataContext>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Menu -->
+        <Menu Grid.Row="0" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush2}" BorderThickness="0,0,0,1">
+            <MenuItem Header="파일">
+                <MenuItem Header="새 프로젝트" Command="{Binding NewProjectCommand}"/>
+                <MenuItem Header="프로젝트 열기..." Command="{Binding OpenProjectCommand}"/>
+                <MenuItem Header="프로젝트 저장" Command="{Binding SaveProjectCommand}"/>
+                <Separator/>
+                <MenuItem Header="종료" Click="ExitMenuItem_OnClick"/>
+            </MenuItem>
+            <MenuItem Header="편집">
+                <MenuItem Header="선택 삭제" Click="DeleteSelectedButton_OnClick"/>
+            </MenuItem>
+            <MenuItem Header="캡처">
+                <MenuItem Header="영상 검색..." Command="{Binding OpenSearchCommand}"/>
+                <MenuItem Header="영상 로드" Command="{Binding LoadVideoCommand}"/>
+                <MenuItem Header="자동 감지 시작" Command="{Binding StartDetectionCommand}"/>
+                <MenuItem Header="캡처 추가" Command="{Binding AddManualCaptureCommand}"/>
+            </MenuItem>
+            <MenuItem Header="내보내기">
+                <MenuItem Header="PDF로 내보내기" Command="{Binding ExportPdfCommand}"/>
+            </MenuItem>
+            <MenuItem Header="도움말">
+                <MenuItem Header="정보" Click="AboutMenuItem_OnClick"/>
+            </MenuItem>
+        </Menu>
+
+        <!-- yt-dlp missing banner -->
+        <Border Grid.Row="1" Background="#FFF4E5" BorderBrush="{StaticResource WarningBrush}" BorderThickness="0,0,0,1"
+                Padding="14,8" Visibility="{Binding IsYtDlpMissing, Converter={StaticResource BoolToVis}}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="yt-dlp 다운로드" Command="{Binding DownloadYtDlpCommand}"/>
+                <TextBlock VerticalAlignment="Center" Foreground="{StaticResource WarningBrush}"
+                           Text="yt-dlp.exe를 찾을 수 없습니다. 유튜브 영상을 불러오려면 먼저 다운로드해주세요."/>
+            </DockPanel>
+        </Border>
+
+        <!-- URL bar -->
+        <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush2}"
+                BorderThickness="0,0,0,1" Padding="16,10">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Bottom" Margin="10,0,0,0">
+                    <Button Content="검색" Command="{Binding OpenSearchCommand}" Margin="0,0,8,0"/>
+                    <Button Content="영상 로드" Command="{Binding LoadVideoCommand}" Margin="0,0,8,0"/>
+                    <Button Content="자동 감지 시작" Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding StartDetectionCommand}"/>
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="유튜브 주소" Style="{StaticResource LabelStyle}"/>
+                    <TextBox Text="{Binding YoutubeUrl, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="https://www.youtube.com/watch?v=..."/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Body -->
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="330"/>
+                <ColumnDefinition Width="6"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="6"/>
+                <ColumnDefinition Width="310"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- LEFT: preview / crop / detection settings -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Padding="12">
+                <StackPanel>
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="미리보기 · 크롭 지정" Style="{StaticResource SectionTitleStyle}"/>
+
+                            <Grid x:Name="PreviewContainer" Height="220" Background="#33414D" ClipToBounds="True">
+                                <Image x:Name="PreviewImageElement" Source="{Binding PreviewImage}" Stretch="Uniform"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       SizeChanged="PreviewImageElement_OnSizeChanged"/>
+                                <Canvas x:Name="CropOverlayCanvas" Background="Transparent"
+                                        MouseLeftButtonDown="CropOverlayCanvas_OnMouseLeftButtonDown"
+                                        MouseMove="CropOverlayCanvas_OnMouseMove"
+                                        MouseLeftButtonUp="CropOverlayCanvas_OnMouseLeftButtonUp">
+                                    <Rectangle x:Name="CropRectShape" Stroke="#3B9CFF" StrokeThickness="2"
+                                               StrokeDashArray="4 2" Fill="#333B9CFF" IsHitTestVisible="False"/>
+                                </Canvas>
+                                <TextBlock Text="영상을 로드하면 미리보기가 표시됩니다" Foreground="#9FB3C0" FontSize="11"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Visibility="{Binding PreviewImage, Converter={StaticResource NullToVis}, FallbackValue=Visible}"/>
+                            </Grid>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="크롭 X / Y" Style="{StaticResource LabelStyle}"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="6"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="CropXTextBox" Grid.Column="0"
+                                                 LostFocus="CropTextBox_OnLostFocus" KeyDown="CropTextBox_OnKeyDown"/>
+                                        <TextBox x:Name="CropYTextBox" Grid.Column="2"
+                                                 LostFocus="CropTextBox_OnLostFocus" KeyDown="CropTextBox_OnKeyDown"/>
+                                    </Grid>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="크롭 폭 / 높이" Style="{StaticResource LabelStyle}"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="6"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="CropWidthTextBox" Grid.Column="0"
+                                                 LostFocus="CropTextBox_OnLostFocus" KeyDown="CropTextBox_OnKeyDown"/>
+                                        <TextBox x:Name="CropHeightTextBox" Grid.Column="2"
+                                                 LostFocus="CropTextBox_OnLostFocus" KeyDown="CropTextBox_OnKeyDown"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Grid>
+
+                            <UniformGrid Rows="1" Columns="3" Margin="0,10,0,0">
+                                <RadioButton Content="수동 지정" GroupName="CropMode" Margin="0,0,4,0"
+                                             Style="{StaticResource ChipRadioButtonStyle}" IsChecked="True"/>
+                                <RadioButton Content="자동 인식" GroupName="CropMode" Margin="4,0,4,0"
+                                             Style="{StaticResource ChipRadioButtonStyle}"
+                                             Command="{Binding AutoDetectCropCommand}"/>
+                                <RadioButton Content="전체 화면" GroupName="CropMode" Margin="4,0,0,0"
+                                             Style="{StaticResource ChipRadioButtonStyle}"
+                                             Command="{Binding SetFullFrameCropCommand}"/>
+                            </UniformGrid>
+                            <TextBlock Text="미리보기 위에서 드래그해도 크롭 영역을 지정할 수 있습니다." Style="{StaticResource LabelStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="감지 설정" Style="{StaticResource SectionTitleStyle}"/>
+
+                            <TextBlock Text="프레임 검사 간격" Style="{StaticResource LabelStyle}"/>
+                            <UniformGrid Rows="1" Columns="3" Margin="0,0,0,12">
+                                <RadioButton Content="0.5초" GroupName="Interval" Margin="0,0,4,0" Style="{StaticResource ChipRadioButtonStyle}"
+                                             IsChecked="{Binding Detection.FrameIntervalSeconds, Converter={StaticResource EqConv}, ConverterParameter=0.5}"/>
+                                <RadioButton Content="1초" GroupName="Interval" Margin="4,0,4,0" Style="{StaticResource ChipRadioButtonStyle}"
+                                             IsChecked="{Binding Detection.FrameIntervalSeconds, Converter={StaticResource EqConv}, ConverterParameter=1}"/>
+                                <RadioButton Content="2초" GroupName="Interval" Margin="4,0,0,0" Style="{StaticResource ChipRadioButtonStyle}"
+                                             IsChecked="{Binding Detection.FrameIntervalSeconds, Converter={StaticResource EqConv}, ConverterParameter=2}"/>
+                            </UniformGrid>
+
+                            <DockPanel Margin="0,0,0,2">
+                                <TextBlock Text="{Binding Detection.DuplicateSimilarityThreshold, StringFormat={}{0:0}%}"
+                                           DockPanel.Dock="Right" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="중복 판정 유사도" Style="{StaticResource LabelStyle}" Margin="0"/>
+                            </DockPanel>
+                            <Slider Minimum="50" Maximum="100" Value="{Binding Detection.DuplicateSimilarityThreshold}"/>
+                            <DockPanel Margin="0,0,0,12">
+                                <TextBlock Text="강하게 제거" DockPanel.Dock="Right" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="덜 남김" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"/>
+                            </DockPanel>
+
+                            <TextBlock Text="캡처 속도 (스트림 화질)" Style="{StaticResource LabelStyle}" Margin="0,4,0,0"/>
+                            <UniformGrid Rows="1" Columns="3" Margin="0,0,0,12">
+                                <RadioButton Content="빠름" GroupName="StreamQuality" Margin="0,0,4,0" Style="{StaticResource ChipRadioButtonStyle}"
+                                             IsChecked="{Binding Detection.StreamMaxHeight, Converter={StaticResource EqConv}, ConverterParameter=480}"/>
+                                <RadioButton Content="보통" GroupName="StreamQuality" Margin="4,0,4,0" Style="{StaticResource ChipRadioButtonStyle}"
+                                             IsChecked="{Binding Detection.StreamMaxHeight, Converter={StaticResource EqConv}, ConverterParameter=720}"/>
+                                <RadioButton Content="느림" GroupName="StreamQuality" Margin="4,0,0,0" Style="{StaticResource ChipRadioButtonStyle}"
+                                             IsChecked="{Binding Detection.StreamMaxHeight, Converter={StaticResource EqConv}, ConverterParameter=1080}"/>
+                            </UniformGrid>
+                            <TextBlock Text="화질을 낮출수록 스트리밍·캡처 속도가 여러 배 빨라집니다 (다시 로드해야 적용)." Style="{StaticResource LabelStyle}"
+                                       Margin="0,0,0,10" TextWrapping="Wrap"/>
+
+                            <CheckBox Content="중복 프레임 자동 제거" IsChecked="{Binding Detection.AutoRemoveDuplicates}"/>
+                            <CheckBox Content="자막 · 재생 UI 영역 제외" IsChecked="{Binding Detection.ExcludeSubtitleAndPlaybackUi}"/>
+                            <CheckBox Content="기울기 보정 · 흑백 대비 향상" IsChecked="{Binding Detection.EnhanceContrastAndDeskew}"/>
+                            <CheckBox Content="업스케일 (고화질, 2배 해상도)" IsChecked="{Binding Detection.UpscaleForQuality}"/>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="70"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="하단 다듬기 (px) — 캡처 맨 아래 실선 제거"
+                                           VerticalAlignment="Center" Style="{StaticResource LabelStyle}" Margin="0" TextWrapping="Wrap"/>
+                                <TextBox Grid.Column="1" Text="{Binding Detection.TrimBottomPx, UpdateSourceTrigger=PropertyChanged}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="Transparent"/>
+
+            <!-- CENTER: capture results -->
+            <Grid Grid.Column="2" Margin="0,12,0,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                        <Button Content="선택 삭제" Margin="0,0,8,0" Click="DeleteSelectedButton_OnClick"/>
+                        <Button Content="캡처 추가" Command="{Binding AddManualCaptureCommand}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="캡처 결과" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock VerticalAlignment="Center" Margin="12,0,0,0" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"
+                                   Text="{Binding ScanSummaryText}"/>
+                        <RadioButton Content="전체" GroupName="ResultFilter" Margin="16,0,4,0" Style="{StaticResource ChipRadioButtonStyle}"
+                                     IsChecked="{Binding FilterMode, Converter={StaticResource EqConv}, ConverterParameter=All}"/>
+                        <RadioButton Content="포함만" GroupName="ResultFilter" Margin="4,0,4,0" Style="{StaticResource ChipRadioButtonStyle}"
+                                     IsChecked="{Binding FilterMode, Converter={StaticResource EqConv}, ConverterParameter=Included}"/>
+                        <RadioButton Content="제외만" GroupName="ResultFilter" Margin="4,0,0,0" Style="{StaticResource ChipRadioButtonStyle}"
+                                     IsChecked="{Binding FilterMode, Converter={StaticResource EqConv}, ConverterParameter=Excluded}"/>
+                    </StackPanel>
+                </DockPanel>
+
+                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Padding="6">
+                    <ListBox x:Name="CaptureListBox" ItemsSource="{Binding CapturesView}" SelectionMode="Extended"
+                             BorderThickness="0" Background="Transparent" ScrollViewer.CanContentScroll="False">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="5"/>
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type models:CaptureItem}">
+                                <Border Background="{StaticResource SubtleBackgroundBrush}"
+                                        BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1" CornerRadius="6">
+                                    <StackPanel Opacity="{Binding IsDuplicate, Converter={StaticResource DupOpacity}}">
+                                        <Grid>
+                                            <Image Source="{Binding Thumbnail}" Height="100" Stretch="Uniform" Margin="6,6,6,0"/>
+                                            <CheckBox IsChecked="{Binding IsIncluded}" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                      Margin="8,8,0,0" ToolTip="PDF에 포함"/>
+                                        </Grid>
+                                        <DockPanel Margin="8,4,8,0">
+                                            <TextBlock Text="{Binding SimilarityLabel}" DockPanel.Dock="Right" FontSize="9"
+                                                       Foreground="{StaticResource AccentBrush}"/>
+                                            <TextBlock Text="{Binding TimestampLabel}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                        </DockPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,6">
+                                            <Button Content="▲" FontSize="9" Padding="6,2" Margin="2,0"
+                                                    Command="{Binding DataContext.MoveCaptureUpCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"/>
+                                            <Button Content="▼" FontSize="9" Padding="6,2" Margin="2,0"
+                                                    Command="{Binding DataContext.MoveCaptureDownCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"/>
+                                            <Button Content="편집" FontSize="9" Padding="6,2" Margin="2,0"
+                                                    Click="EditCaptureButton_OnClick" Tag="{Binding}"/>
+                                            <Button Content="삭제" FontSize="9" Padding="6,2" Margin="2,0"
+                                                    Command="{Binding DataContext.DeleteCaptureCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
+                <Border Grid.Row="2" Margin="0,8,0,0" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="취소" Margin="10,0,0,0"
+                                Command="{Binding CancelBusyOperationCommand}"/>
+                        <TextBlock DockPanel.Dock="Right" Margin="10,0,0,0" VerticalAlignment="Center" Width="40"
+                                   Text="{Binding BusyPercent, StringFormat={}{0:0}%}"/>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding BusyStatusText}" FontSize="11" Margin="0,0,0,4"/>
+                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding BusyPercent, Mode=OneWay}"
+                                         IsIndeterminate="{Binding IsBusyIndeterminate}"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+            </Grid>
+
+            <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" Background="Transparent"/>
+
+            <!-- RIGHT: PDF export settings -->
+            <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto" Padding="12">
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="PDF 출력" Style="{StaticResource SectionTitleStyle}"/>
+
+                        <TextBlock Text="용지" Style="{StaticResource LabelStyle}"/>
+                        <UniformGrid Rows="1" Columns="3" Margin="0,0,0,12">
+                            <RadioButton Content="A4" GroupName="Paper" Margin="0,0,4,0" Style="{StaticResource ChipRadioButtonStyle}"
+                                         IsChecked="{Binding PdfSettings.PaperSize, Converter={StaticResource EqConv}, ConverterParameter=A4}"/>
+                            <RadioButton Content="Letter" GroupName="Paper" Margin="4,0,4,0" Style="{StaticResource ChipRadioButtonStyle}"
+                                         IsChecked="{Binding PdfSettings.PaperSize, Converter={StaticResource EqConv}, ConverterParameter=Letter}"/>
+                            <RadioButton Content="A3" GroupName="Paper" Margin="4,0,0,0" Style="{StaticResource ChipRadioButtonStyle}"
+                                         IsChecked="{Binding PdfSettings.PaperSize, Converter={StaticResource EqConv}, ConverterParameter=A3}"/>
+                        </UniformGrid>
+
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="여백 (mm)" Style="{StaticResource LabelStyle}"/>
+                                <TextBox Text="{Binding PdfSettings.MarginMm, UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="해상도 (DPI)" Style="{StaticResource LabelStyle}"/>
+                                <TextBox Text="{Binding PdfSettings.Dpi, UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <CheckBox Content="페이지 번호 넣기" IsChecked="{Binding PdfSettings.AddPageNumbers}"/>
+                        <CheckBox Content="첫장에 제목 삽입" IsChecked="{Binding PdfSettings.InsertTitleOnFirstPage}"/>
+                        <TextBox x:Name="TitleTextBox" Text="{Binding PdfSettings.ProjectTitle, UpdateSourceTrigger=PropertyChanged}"
+                                 IsEnabled="{Binding PdfSettings.InsertTitleOnFirstPage}" Margin="20,4,0,0"
+                                 AcceptsReturn="True" TextWrapping="Wrap" Height="58" VerticalContentAlignment="Top"
+                                 PreviewKeyDown="TitleTextBox_OnPreviewKeyDown"
+                                 ToolTip="첫 페이지 상단에 들어갈 제목 (Enter로 줄바꿈, 최대 2줄)"/>
+                        <CheckBox Content="원본 PNG도 함께 저장" IsChecked="{Binding PdfSettings.SaveOriginalPngs}" Margin="0,10,0,12"/>
+
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="출력 페이지" Style="{StaticResource LabelStyle}"/>
+                                <TextBlock Text="{Binding OutputPageCountText, StringFormat={}{0}장}" FontWeight="SemiBold"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="예상 용량" Style="{StaticResource LabelStyle}"/>
+                                <TextBlock Text="{Binding ExpectedPdfSizeText}" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="저장 위치" Style="{StaticResource LabelStyle}"/>
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Text="{Binding PdfSettings.OutputPath, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True"/>
+                            <Button Grid.Column="2" Content="찾기" Command="{Binding BrowseSavePathCommand}"/>
+                        </Grid>
+
+                        <Button Content="PDF로 내보내기" Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding ExportPdfCommand}" Padding="12,12" FontSize="13"/>
+                    </StackPanel>
+                </Border>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Window>
