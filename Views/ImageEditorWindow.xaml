@@ -37,10 +37,20 @@
                                          ToolTip="선 지우기 — 시작점에서 끝점까지 직선을 따라 지웁니다">
                                 <TextBlock Text="─" FontWeight="Bold"/>
                             </RadioButton>
+                            <RadioButton x:Name="LassoToolButton" GroupName="EditTool" Style="{StaticResource IconToolButtonStyle}"
+                                         Checked="ToolRadioButton_OnChecked"
+                                         ToolTip="올가미 — 자유롭게 영역을 그려 선택합니다 (자동 영역 버튼과 함께 사용)">
+                                <TextBlock Text="◌" FontSize="18"/>
+                            </RadioButton>
                             <Button x:Name="AutoDetectButton" Style="{StaticResource IconActionButtonStyle}"
                                     Click="AutoDetectButton_OnClick"
-                                    ToolTip="자동 인식(실험적) — 한글로 보이는 부분을 자동으로 찾아 지웁니다">
+                                    ToolTip="자동 인식(실험적) — 이미지 전체에서 한글로 보이는 부분을 찾아 지웁니다">
                                 <TextBlock Text="자동" FontSize="11" FontWeight="SemiBold"/>
+                            </Button>
+                            <Button x:Name="AutoRegionButton" Style="{StaticResource IconActionButtonStyle}"
+                                    Click="AutoRegionButton_OnClick" IsEnabled="False"
+                                    ToolTip="자동 영역 — 올가미로 선택한 영역 안에서만 한글로 보이는 부분을 찾아 지웁니다 (먼저 올가미로 영역을 지정하세요)">
+                                <TextBlock Text="영역" FontSize="11" FontWeight="SemiBold"/>
                             </Button>
                         </StackPanel>
                     </StackPanel>
@@ -56,6 +66,11 @@
                                          ToolTip="붓 그리기 — 검은색으로 자유롭게 다시 그립니다">
                                 <TextBlock Text="✎"/>
                             </RadioButton>
+                            <RadioButton x:Name="LineDrawToolButton" GroupName="EditTool" Style="{StaticResource IconToolButtonStyle}"
+                                         Checked="ToolRadioButton_OnChecked"
+                                         ToolTip="직선 그리기 — 시작점에서 끝점까지 검은색 직선을 그립니다">
+                                <TextBlock Text="╱" FontWeight="Bold"/>
+                            </RadioButton>
                             <RadioButton x:Name="TextToolButton" GroupName="EditTool" Style="{StaticResource IconToolButtonStyle}"
                                          Checked="ToolRadioButton_OnChecked"
                                          ToolTip="텍스트 입력 — 클릭한 위치에 글자를 입력합니다">
@@ -68,31 +83,42 @@
                 <TextBlock x:Name="SizeSliderLabel" Text="굵기" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource LabelStyle}"/>
                 <Slider x:Name="BrushSizeSlider" Width="120" Minimum="6" Maximum="70" Value="24" VerticalAlignment="Center"/>
 
+                <TextBlock x:Name="ZoomLabel" Text="확대 100%" VerticalAlignment="Center" Margin="16,0,0,0" Style="{StaticResource LabelStyle}"/>
+
                 <Button x:Name="UndoButton" Style="{StaticResource IconActionButtonStyle}" Margin="20,0,8,0"
                         Click="UndoButton_OnClick" ToolTip="실행 취소">
                     <TextBlock Text="↶" FontSize="18"/>
                 </Button>
-                <Button Content="원본으로 되돌리기" Click="ResetButton_OnClick"/>
+                <Button x:Name="ResetButton" Style="{StaticResource IconActionButtonStyle}"
+                        Click="ResetButton_OnClick" ToolTip="원본으로 되돌리기 — 모든 편집을 취소하고 원본 이미지로 되돌립니다">
+                    <TextBlock Text="↺" FontSize="18"/>
+                </Button>
             </StackPanel>
         </Border>
 
         <!-- Canvas -->
         <Border Grid.Row="1" Style="{StaticResource CardStyle}" Padding="6">
-            <Grid x:Name="ImageContainer" Background="#33414D" ClipToBounds="True">
-                <Image x:Name="ImageElement" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
-                       SizeChanged="ImageElement_OnSizeChanged"/>
-                <Canvas x:Name="OverlayCanvas" Background="Transparent"
-                        MouseLeftButtonDown="OverlayCanvas_OnMouseLeftButtonDown"
-                        MouseMove="OverlayCanvas_OnMouseMove"
-                        MouseLeftButtonUp="OverlayCanvas_OnMouseLeftButtonUp"
-                        MouseLeave="OverlayCanvas_OnMouseLeave">
-                    <Rectangle x:Name="RectDragPreview" Stroke="#3B9CFF" StrokeThickness="2"
-                               StrokeDashArray="4 2" Fill="#333B9CFF" IsHitTestVisible="False" Visibility="Collapsed"/>
-                    <Line x:Name="LineDragPreview" Stroke="#3B9CFF" StrokeThickness="3" StrokeDashArray="4 2"
-                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" IsHitTestVisible="False" Visibility="Collapsed"/>
-                    <Ellipse x:Name="BrushCursor" Stroke="#3B9CFF" StrokeThickness="1.5" IsHitTestVisible="False" Visibility="Collapsed"/>
-                </Canvas>
-            </Grid>
+            <ScrollViewer x:Name="CanvasScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                          PreviewMouseWheel="CanvasScrollViewer_OnPreviewMouseWheel"
+                          SizeChanged="CanvasScrollViewer_OnSizeChanged">
+                <Grid x:Name="ImageContainer" Background="#33414D">
+                    <Image x:Name="ImageElement" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           SizeChanged="ImageElement_OnSizeChanged"/>
+                    <Canvas x:Name="OverlayCanvas" Background="Transparent"
+                            MouseLeftButtonDown="OverlayCanvas_OnMouseLeftButtonDown"
+                            MouseMove="OverlayCanvas_OnMouseMove"
+                            MouseLeftButtonUp="OverlayCanvas_OnMouseLeftButtonUp"
+                            MouseLeave="OverlayCanvas_OnMouseLeave">
+                        <Rectangle x:Name="RectDragPreview" Stroke="#3B9CFF" StrokeThickness="2"
+                                   StrokeDashArray="4 2" Fill="#333B9CFF" IsHitTestVisible="False" Visibility="Collapsed"/>
+                        <Line x:Name="LineDragPreview" Stroke="#3B9CFF" StrokeThickness="3"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" IsHitTestVisible="False" Visibility="Collapsed"/>
+                        <Polygon x:Name="LassoPreview" Stroke="#3B9CFF" StrokeThickness="2" Fill="#333B9CFF"
+                                 IsHitTestVisible="False" Visibility="Collapsed"/>
+                        <Ellipse x:Name="BrushCursor" Stroke="#3B9CFF" StrokeThickness="1.5" IsHitTestVisible="False" Visibility="Collapsed"/>
+                    </Canvas>
+                </Grid>
+            </ScrollViewer>
         </Border>
 
         <!-- Actions -->

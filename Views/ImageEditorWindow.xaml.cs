@@ -13,7 +13,11 @@ namespace ScoreCap.Views;
 
 public partial class ImageEditorWindow : System.Windows.Window
 {
-    private enum EditTool { RectEraser, BrushEraser, LineEraser, BrushDraw, Text }
+    private enum EditTool { RectEraser, BrushEraser, LineEraser, Lasso, BrushDraw, LineDraw, Text }
+
+    private const double MinZoom = 0.5;
+    private const double MaxZoom = 6.0;
+    private const double ZoomStep = 1.15;
 
     private readonly string _imagePath;
     private readonly Stack<Mat> _undoStack = new();
@@ -24,6 +28,11 @@ public partial class ImageEditorWindow : System.Windows.Window
     private bool _dragging;
     private WpfPoint _dragStartImagePoint;
     private WpfPoint _lastBrushImagePoint;
+    private List<WpfPoint>? _lassoImagePoints;
+
+    private double _zoom = 1.0;
+    private double _baseFitWidth;
+    private double _baseFitHeight;
 
     public bool WasSaved { get; private set; }
 
@@ -33,9 +42,9 @@ public partial class ImageEditorWindow : System.Windows.Window
 
         // RectToolButton.IsChecked starts unset (not "True" in XAML) deliberately: a RadioButton's Checked event
         // fires the instant IsChecked flips to true, even mid-BAML-load — setting it via XAML would fire
-        // ToolRadioButton_OnChecked before RectDragPreview/BrushCursor/LineDragPreview further down in the tree
-        // are assigned, crashing with a NullReferenceException. Setting it here, after InitializeComponent, fires
-        // the same event once everything actually exists.
+        // ToolRadioButton_OnChecked before RectDragPreview/BrushCursor/LineDragPreview/LassoPreview further down
+        // in the tree are assigned, crashing with a NullReferenceException. Setting it here, after
+        // InitializeComponent, fires the same event once everything actually exists.
         RectToolButton.IsChecked = true;
 
         _imagePath = imagePath;
@@ -51,7 +60,9 @@ public partial class ImageEditorWindow : System.Windows.Window
         {
             var s when ReferenceEquals(s, BrushToolButton) => EditTool.BrushEraser,
             var s when ReferenceEquals(s, LineToolButton) => EditTool.LineEraser,
+            var s when ReferenceEquals(s, LassoToolButton) => EditTool.Lasso,
             var s when ReferenceEquals(s, DrawToolButton) => EditTool.BrushDraw,
+            var s when ReferenceEquals(s, LineDrawToolButton) => EditTool.LineDraw,
             var s when ReferenceEquals(s, TextToolButton) => EditTool.Text,
             _ => EditTool.RectEraser,
         };
@@ -60,13 +71,77 @@ public partial class ImageEditorWindow : System.Windows.Window
         RectDragPreview.Visibility = Visibility.Collapsed;
         BrushCursor.Visibility = Visibility.Collapsed;
         LineDragPreview.Visibility = Visibility.Collapsed;
+        // LassoPreview is intentionally left alone here: a finished lasso selection should survive switching to
+        // another tool (e.g. drawing a lasso, then using the rectangle eraser inside it), and only gets cleared
+        // when a new lasso is started or "자동 영역" consumes it.
 
-        var usesBrushSize = _tool is EditTool.BrushEraser or EditTool.LineEraser or EditTool.BrushDraw;
+        var usesBrushSize = _tool is EditTool.BrushEraser or EditTool.LineEraser or EditTool.BrushDraw or EditTool.LineDraw;
         BrushSizeSlider.IsEnabled = usesBrushSize;
         SizeSliderLabel.Text = usesBrushSize ? "굵기" : "굵기 (해당 없음)";
     }
 
     private void ImageElement_OnSizeChanged(object sender, SizeChangedEventArgs e) { }
+
+    private void CanvasScrollViewer_OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        RecomputeBaseFit();
+        ApplyZoom();
+    }
+
+    /// <summary>Recomputes the "fit to viewport at 100%" size — the baseline that <see cref="_zoom"/> multiplies.
+    /// Reading it from the ScrollViewer's viewport (not ImageContainer) because ImageContainer now auto-sizes to
+    /// the Image's explicit Width/Height, so it no longer reflects the available screen space on its own.</summary>
+    private void RecomputeBaseFit()
+    {
+        var viewportW = CanvasScrollViewer.ViewportWidth > 0 ? CanvasScrollViewer.ViewportWidth : CanvasScrollViewer.ActualWidth;
+        var viewportH = CanvasScrollViewer.ViewportHeight > 0 ? CanvasScrollViewer.ViewportHeight : CanvasScrollViewer.ActualHeight;
+        if (viewportW <= 0 || viewportH <= 0 || _mat.Width <= 0 || _mat.Height <= 0) return;
+
+        var fitScale = Math.Min(viewportW / _mat.Width, viewportH / _mat.Height);
+        _baseFitWidth = _mat.Width * fitScale;
+        _baseFitHeight = _mat.Height * fitScale;
+    }
+
+    private void ApplyZoom()
+    {
+        if (_baseFitWidth <= 0 || _baseFitHeight <= 0) return;
+        ImageElement.Width = _baseFitWidth * _zoom;
+        ImageElement.Height = _baseFitHeight * _zoom;
+        ZoomLabel.Text = $"확대 {_zoom * 100:0}%";
+        UpdateLassoPreview();
+    }
+
+    /// <summary>Wheel-to-zoom, anchored at the cursor so the pixel under the mouse stays put — lets the user zoom
+    /// in for detailed edits without losing their place. Handled at Preview so it replaces the ScrollViewer's
+    /// default wheel-scroll instead of fighting it.</summary>
+    private void CanvasScrollViewer_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        e.Handled = true;
+        if (_baseFitWidth <= 0) return;
+
+        var cursorViewportPoint = e.GetPosition(CanvasScrollViewer);
+        var oldContentW = ImageElement.Width;
+        var oldContentH = ImageElement.Height;
+        if (oldContentW <= 0 || oldContentH <= 0) return;
+
+        var fractionX = (CanvasScrollViewer.HorizontalOffset + cursorViewportPoint.X) / oldContentW;
+        var fractionY = (CanvasScrollViewer.VerticalOffset + cursorViewportPoint.Y) / oldContentH;
+
+        var factor = e.Delta > 0 ? ZoomStep : 1.0 / ZoomStep;
+        var newZoom = Math.Clamp(_zoom * factor, MinZoom, MaxZoom);
+        if (Math.Abs(newZoom - _zoom) < 0.0001) return;
+
+        _zoom = newZoom;
+        ApplyZoom();
+
+        var newContentW = ImageElement.Width;
+        var newContentH = ImageElement.Height;
+        Dispatcher.InvokeAsync(() =>
+        {
+            CanvasScrollViewer.ScrollToHorizontalOffset(fractionX * newContentW - cursorViewportPoint.X);
+            CanvasScrollViewer.ScrollToVerticalOffset(fractionY * newContentH - cursorViewportPoint.Y);
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
 
     private (double scale, double offsetX, double offsetY) GetTransform()
     {
@@ -132,6 +207,7 @@ public partial class ImageEditorWindow : System.Windows.Window
         while (_undoStack.Count > 0) _undoStack.Pop().Dispose();
         _mat.Dispose();
         _mat = original;
+        ClearLasso();
         RefreshDisplay();
     }
 
@@ -150,6 +226,81 @@ public partial class ImageEditorWindow : System.Windows.Window
         RefreshDisplay();
     }
 
+    /// <summary>Runs the same glyph-cluster heuristic as "자동 인식", but restricted to the area the user outlined
+    /// with the 올가미(lasso) tool: crops to the lasso's bounding box (smaller/cleaner input for the heuristic),
+    /// then intersects the detected glyph regions with the actual lasso polygon (not just its bounding box) so a
+    /// stray corner of the box can't erase notation the user didn't circle.</summary>
+    private void AutoRegionButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_lassoImagePoints is not { Count: >= 3 })
+        {
+            MessageBox.Show("먼저 올가미 도구로 영역을 지정해주세요.", "자동 영역", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var xs = _lassoImagePoints.Select(p => p.X).ToList();
+        var ys = _lassoImagePoints.Select(p => p.Y).ToList();
+        var x0 = (int)Math.Clamp(Math.Floor(xs.Min()), 0, _mat.Width - 1);
+        var y0 = (int)Math.Clamp(Math.Floor(ys.Min()), 0, _mat.Height - 1);
+        var x1 = (int)Math.Clamp(Math.Ceiling(xs.Max()), x0 + 1, _mat.Width);
+        var y1 = (int)Math.Clamp(Math.Ceiling(ys.Max()), y0 + 1, _mat.Height);
+        var boundsRect = new CvRect(x0, y0, x1 - x0, y1 - y0);
+
+        using var subImage = new Mat(_mat, boundsRect); // view into _mat — writes below land directly on it
+
+        // Reference the FULL image's dimensions, not the (usually much smaller) crop's own — the detector's size
+        // thresholds are relative fractions, so using the crop's own size would reject ordinary-sized text as
+        // "too big for this tiny region" purely because the user drew a tight lasso around it.
+        var localRegions = TextRegionDetector.FindTextRegions(subImage, _mat.Width, _mat.Height);
+
+        using var eraseMask = new Mat(subImage.Size(), MatType.CV_8UC1, Scalar.Black);
+        foreach (var r in localRegions)
+            Cv2.Rectangle(eraseMask, r, Scalar.White, thickness: -1);
+
+        var polygonLocal = _lassoImagePoints
+            .Select(p => new CvPoint((int)Math.Round(p.X - x0), (int)Math.Round(p.Y - y0)))
+            .ToArray();
+        using var lassoMask = new Mat(subImage.Size(), MatType.CV_8UC1, Scalar.Black);
+        Cv2.FillPoly(lassoMask, new[] { polygonLocal }, Scalar.White);
+
+        using var finalMask = new Mat();
+        Cv2.BitwiseAnd(eraseMask, lassoMask, finalMask);
+
+        if (Cv2.CountNonZero(finalMask) == 0)
+        {
+            MessageBox.Show("선택한 영역에서 한글로 보이는 부분을 찾지 못했습니다.", "자동 영역", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        PushUndo();
+        subImage.SetTo(Scalar.White, finalMask);
+        ClearLasso();
+        RefreshDisplay();
+    }
+
+    private void ClearLasso()
+    {
+        _lassoImagePoints = null;
+        LassoPreview.Visibility = Visibility.Collapsed;
+        AutoRegionButton.IsEnabled = false;
+    }
+
+    private void UpdateLassoPreview()
+    {
+        if (_lassoImagePoints is not { Count: > 0 })
+        {
+            LassoPreview.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var (scale, offsetX, offsetY) = GetTransform();
+        if (scale <= 0) return;
+
+        LassoPreview.Points = new PointCollection(
+            _lassoImagePoints.Select(p => new WpfPoint(offsetX + p.X * scale, offsetY + p.Y * scale)));
+        LassoPreview.Visibility = Visibility.Visible;
+    }
+
     private void OverlayCanvas_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var point = ScreenToImagePoint(e.GetPosition(OverlayCanvas));
@@ -163,16 +314,25 @@ public partial class ImageEditorWindow : System.Windows.Window
         _dragging = true;
         OverlayCanvas.CaptureMouse();
 
-        if (_tool is EditTool.BrushEraser or EditTool.BrushDraw)
+        switch (_tool)
         {
-            PushUndo();
-            _lastBrushImagePoint = point;
-            PaintBrushDot(point);
-            RefreshDisplay();
-        }
-        else
-        {
-            _dragStartImagePoint = point;
+            case EditTool.BrushEraser:
+            case EditTool.BrushDraw:
+                PushUndo();
+                _lastBrushImagePoint = point;
+                PaintBrushDot(point);
+                RefreshDisplay();
+                break;
+
+            case EditTool.Lasso:
+                _lassoImagePoints = new List<WpfPoint> { point };
+                AutoRegionButton.IsEnabled = false;
+                UpdateLassoPreview();
+                break;
+
+            default:
+                _dragStartImagePoint = point;
+                break;
         }
     }
 
@@ -205,14 +365,18 @@ public partial class ImageEditorWindow : System.Windows.Window
         {
             case EditTool.BrushEraser:
             case EditTool.BrushDraw:
-                var color = _tool == EditTool.BrushDraw ? Scalar.Black : Scalar.White;
-                Cv2.Line(_mat, ToCvPoint(_lastBrushImagePoint), ToCvPoint(point), color,
+                var brushColor = _tool == EditTool.BrushDraw ? Scalar.Black : Scalar.White;
+                Cv2.Line(_mat, ToCvPoint(_lastBrushImagePoint), ToCvPoint(point), brushColor,
                     (int)(BrushSizeSlider.Value * 2), LineTypes.AntiAlias);
                 _lastBrushImagePoint = point;
                 RefreshDisplay();
                 break;
 
             case EditTool.LineEraser when scale > 0:
+            case EditTool.LineDraw when scale > 0:
+                LineDragPreview.Stroke = _tool == EditTool.LineDraw
+                    ? System.Windows.Media.Brushes.Black
+                    : (System.Windows.Media.Brush)FindResource("AccentBrush");
                 LineDragPreview.Visibility = Visibility.Visible;
                 LineDragPreview.X1 = offsetX + _dragStartImagePoint.X * scale;
                 LineDragPreview.Y1 = offsetY + _dragStartImagePoint.Y * scale;
@@ -233,6 +397,11 @@ public partial class ImageEditorWindow : System.Windows.Window
                 RectDragPreview.Width = w * scale;
                 RectDragPreview.Height = h * scale;
                 break;
+
+            case EditTool.Lasso:
+                _lassoImagePoints?.Add(point);
+                UpdateLassoPreview();
+                break;
         }
     }
 
@@ -244,35 +413,56 @@ public partial class ImageEditorWindow : System.Windows.Window
 
         var end = ScreenToImagePoint(e.GetPosition(OverlayCanvas));
 
-        if (_tool == EditTool.RectEraser)
+        switch (_tool)
         {
-            RectDragPreview.Visibility = Visibility.Collapsed;
-            var x0 = (int)Math.Min(_dragStartImagePoint.X, end.X);
-            var y0 = (int)Math.Min(_dragStartImagePoint.Y, end.Y);
-            var w = (int)Math.Abs(end.X - _dragStartImagePoint.X);
-            var h = (int)Math.Abs(end.Y - _dragStartImagePoint.Y);
-
-            if (w > 2 && h > 2)
+            case EditTool.RectEraser:
             {
-                PushUndo();
-                var rect = new CvRect(x0, y0, Math.Min(w, _mat.Width - x0), Math.Min(h, _mat.Height - y0));
-                Cv2.Rectangle(_mat, rect, Scalar.White, thickness: -1);
-                RefreshDisplay();
-            }
-        }
-        else if (_tool == EditTool.LineEraser)
-        {
-            LineDragPreview.Visibility = Visibility.Collapsed;
-            var dx = end.X - _dragStartImagePoint.X;
-            var dy = end.Y - _dragStartImagePoint.Y;
+                RectDragPreview.Visibility = Visibility.Collapsed;
+                var x0 = (int)Math.Min(_dragStartImagePoint.X, end.X);
+                var y0 = (int)Math.Min(_dragStartImagePoint.Y, end.Y);
+                var w = (int)Math.Abs(end.X - _dragStartImagePoint.X);
+                var h = (int)Math.Abs(end.Y - _dragStartImagePoint.Y);
 
-            if (Math.Abs(dx) > 1 || Math.Abs(dy) > 1)
-            {
-                PushUndo();
-                Cv2.Line(_mat, ToCvPoint(_dragStartImagePoint), ToCvPoint(end), Scalar.White,
-                    (int)(BrushSizeSlider.Value * 2), LineTypes.AntiAlias);
-                RefreshDisplay();
+                if (w > 2 && h > 2)
+                {
+                    PushUndo();
+                    var rect = new CvRect(x0, y0, Math.Min(w, _mat.Width - x0), Math.Min(h, _mat.Height - y0));
+                    Cv2.Rectangle(_mat, rect, Scalar.White, thickness: -1);
+                    RefreshDisplay();
+                }
+                break;
             }
+
+            case EditTool.LineEraser:
+            case EditTool.LineDraw:
+            {
+                LineDragPreview.Visibility = Visibility.Collapsed;
+                var dx = end.X - _dragStartImagePoint.X;
+                var dy = end.Y - _dragStartImagePoint.Y;
+
+                if (Math.Abs(dx) > 1 || Math.Abs(dy) > 1)
+                {
+                    PushUndo();
+                    var color = _tool == EditTool.LineDraw ? Scalar.Black : Scalar.White;
+                    Cv2.Line(_mat, ToCvPoint(_dragStartImagePoint), ToCvPoint(end), color,
+                        (int)(BrushSizeSlider.Value * 2), LineTypes.AntiAlias);
+                    RefreshDisplay();
+                }
+                break;
+            }
+
+            case EditTool.Lasso:
+                _lassoImagePoints?.Add(end);
+                if (_lassoImagePoints is { Count: >= 3 })
+                {
+                    AutoRegionButton.IsEnabled = true;
+                    UpdateLassoPreview();
+                }
+                else
+                {
+                    ClearLasso();
+                }
+                break;
         }
     }
 

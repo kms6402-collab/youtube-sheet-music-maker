@@ -50,7 +50,7 @@ public partial class MainWindow : Window
 
     private void AboutMenuItem_OnClick(object sender, RoutedEventArgs e) =>
         MessageBox.Show(
-            "유튜브 악보 메이커 v2.2.0\n영상에서 악보 프레임을 캡처해 한 권의 PDF로 만듭니다.\n\n" + GitHubRepoUrl,
+            "유튜브 악보 메이커 v2.3.0\n영상에서 악보 프레임을 캡처해 한 권의 PDF로 만듭니다.\n\n" + GitHubRepoUrl,
             "정보", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private void GitHubDownloadMenuItem_OnClick(object sender, RoutedEventArgs e)

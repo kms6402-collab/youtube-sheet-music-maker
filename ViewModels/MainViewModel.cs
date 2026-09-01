@@ -196,6 +196,19 @@ public partial class MainViewModel : ObservableObject
     {
         if (IsBusy || string.IsNullOrWhiteSpace(YoutubeUrl)) return;
 
+        if (Captures.Count > 0)
+        {
+            var result = MessageBox.Show(
+                "새 영상을 불러오면 현재 캡처 결과가 모두 초기화됩니다. 계속하시겠습니까?",
+                "캡처 결과 초기화", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result != MessageBoxResult.Yes) return;
+
+            Captures.Clear();
+            ScannedFrameCount = 0;
+            KeptCount = 0;
+            DuplicateCount = 0;
+        }
+
         var ytDlpPath = _ytDlpLocator.Find();
         if (ytDlpPath is null)
         {

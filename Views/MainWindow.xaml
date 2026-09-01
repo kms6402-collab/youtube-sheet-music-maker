@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:ScoreCap.ViewModels"
         xmlns:conv="clr-namespace:ScoreCap.Converters"
         xmlns:models="clr-namespace:ScoreCap.Models"
-        Title="{Binding ProjectDisplayName, StringFormat='유튜브 악보 메이커 v2.2.0 – {0}'}" Height="968" Width="1480"
+        Title="{Binding ProjectDisplayName, StringFormat='유튜브 악보 메이커 v2.3.0 – {0}'}" Height="968" Width="1480"
         MinHeight="640" MinWidth="1100"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource WindowBackgroundBrush}"

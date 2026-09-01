@@ -8,7 +8,13 @@ namespace ScoreCap.Services.Capture;
 /// than staff lines or notation, so it can miss text or occasionally flag notation by mistake.</summary>
 public static class TextRegionDetector
 {
-    public static List<Rect> FindTextRegions(Mat bgrOrGray)
+    /// <param name="bgrOrGray">The image (or crop of one) to scan.</param>
+    /// <param name="referenceWidth">Width used for the "is this a staff/bar line" and glyph-size heuristics —
+    /// defaults to <paramref name="bgrOrGray"/>'s own width. Pass the *full* source image's width when scanning a
+    /// small crop (e.g. a lasso selection): the thresholds are relative fractions, so deriving them from a small
+    /// crop instead of the original image would reject ordinary-sized text as "too big for this tiny region".</param>
+    /// <param name="referenceHeight">Same idea as <paramref name="referenceWidth"/>, for height.</param>
+    public static List<Rect> FindTextRegions(Mat bgrOrGray, int? referenceWidth = null, int? referenceHeight = null)
     {
         using var gray = new Mat();
         if (bgrOrGray.Channels() == 1)
@@ -24,8 +30,8 @@ public static class TextRegionDetector
         using var centroids = new Mat();
         var labelCount = Cv2.ConnectedComponentsWithStats(binary, labels, stats, centroids);
 
-        var w = bgrOrGray.Width;
-        var h = bgrOrGray.Height;
+        var w = referenceWidth ?? bgrOrGray.Width;
+        var h = referenceHeight ?? bgrOrGray.Height;
         var glyphBoxes = new List<Rect>();
         for (var i = 1; i < labelCount; i++) // label 0 is the background
         {
