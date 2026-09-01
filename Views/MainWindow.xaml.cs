@@ -42,9 +42,28 @@ public partial class MainWindow : Window
             e.Handled = true; // already have a line break — swallow further Enter presses
     }
 
+    private const string GitHubRepoUrl = "https://github.com/kms6402-collab/youtube-sheet-music-maker";
+
     private void AboutMenuItem_OnClick(object sender, RoutedEventArgs e) =>
-        MessageBox.Show("ScoreCap – 유튜브 악보 캡처 · PDF 빌더\n영상에서 악보 프레임을 캡처해 한 권의 PDF로 만듭니다.",
+        MessageBox.Show(
+            "유튜브 악보 메이커 v2.1.0\n영상에서 악보 프레임을 캡처해 한 권의 PDF로 만듭니다.\n\n" + GitHubRepoUrl,
             "정보", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    private void GitHubDownloadMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo($"{GitHubRepoUrl}/releases")
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"브라우저를 열 수 없습니다.\n{GitHubRepoUrl}/releases\n\n{ex.Message}",
+                "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
 
     private void DeleteSelectedButton_OnClick(object sender, RoutedEventArgs e)
     {

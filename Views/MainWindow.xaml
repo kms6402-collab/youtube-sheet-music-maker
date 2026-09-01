@@ -50,6 +50,7 @@
             </MenuItem>
             <MenuItem Header="도움말">
                 <MenuItem Header="정보" Click="AboutMenuItem_OnClick"/>
+                <MenuItem Header="GitHub에서 다운로드..." Click="GitHubDownloadMenuItem_OnClick"/>
             </MenuItem>
         </Menu>
 
