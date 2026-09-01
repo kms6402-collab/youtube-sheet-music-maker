@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using ScoreCap.Models;
@@ -15,8 +16,11 @@ public partial class MainWindow : Window
     private MainViewModel ViewModel => (MainViewModel)DataContext;
 
     private bool _dragging;
+    private bool _movingCrop;
     private bool _suppressCropTextSync;
     private Point _dragStartImagePoint;
+    private Point _moveStartMouseImagePoint;
+    private CropRegion _moveStartCrop = new();
 
     public MainWindow()
     {
@@ -46,7 +50,7 @@ public partial class MainWindow : Window
 
     private void AboutMenuItem_OnClick(object sender, RoutedEventArgs e) =>
         MessageBox.Show(
-            "유튜브 악보 메이커 v2.1.0\n영상에서 악보 프레임을 캡처해 한 권의 PDF로 만듭니다.\n\n" + GitHubRepoUrl,
+            "유튜브 악보 메이커 v2.2.0\n영상에서 악보 프레임을 캡처해 한 권의 PDF로 만듭니다.\n\n" + GitHubRepoUrl,
             "정보", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private void GitHubDownloadMenuItem_OnClick(object sender, RoutedEventArgs e)
@@ -128,12 +132,71 @@ public partial class MainWindow : Window
         }
 
         CropRectShape.Visibility = Visibility.Visible;
-        Canvas.SetLeft(CropRectShape, offsetX + ViewModel.CropX * scale);
-        Canvas.SetTop(CropRectShape, offsetY + ViewModel.CropY * scale);
-        CropRectShape.Width = Math.Max(0, ViewModel.CropWidth * scale);
-        CropRectShape.Height = Math.Max(0, ViewModel.CropHeight * scale);
+        var left = offsetX + ViewModel.CropX * scale;
+        var top = offsetY + ViewModel.CropY * scale;
+        var width = Math.Max(0, ViewModel.CropWidth * scale);
+        var height = Math.Max(0, ViewModel.CropHeight * scale);
+        Canvas.SetLeft(CropRectShape, left);
+        Canvas.SetTop(CropRectShape, top);
+        CropRectShape.Width = width;
+        CropRectShape.Height = height;
+
+        PositionHandle(TopLeftHandle, left, top);
+        PositionHandle(TopRightHandle, left + width, top);
+        PositionHandle(BottomLeftHandle, left, top + height);
+        PositionHandle(BottomRightHandle, left + width, top + height);
 
         SetCropTextBoxes(ViewModel.CropX * scale, ViewModel.CropY * scale, ViewModel.CropWidth * scale, ViewModel.CropHeight * scale);
+    }
+
+    private static void PositionHandle(Thumb handle, double centerX, double centerY)
+    {
+        handle.Visibility = Visibility.Visible;
+        Canvas.SetLeft(handle, centerX - handle.Width / 2);
+        Canvas.SetTop(handle, centerY - handle.Height / 2);
+    }
+
+    /// <summary>Drags a crop corner: resizes from that corner while the opposite corner stays put.</summary>
+    private void CropHandle_OnDragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (sender is not Thumb { Tag: string corner }) return;
+        var (scale, _, _) = GetPreviewTransform();
+        if (scale <= 0) return;
+
+        var dx = (int)Math.Round(e.HorizontalChange / scale);
+        var dy = (int)Math.Round(e.VerticalChange / scale);
+        if (dx == 0 && dy == 0) return;
+
+        var x = ViewModel.CropX;
+        var y = ViewModel.CropY;
+        var w = ViewModel.CropWidth;
+        var h = ViewModel.CropHeight;
+
+        switch (corner)
+        {
+            case "TopLeft": x += dx; y += dy; w -= dx; h -= dy; break;
+            case "TopRight": y += dy; w += dx; h -= dy; break;
+            case "BottomLeft": x += dx; w -= dx; h += dy; break;
+            case "BottomRight": w += dx; h += dy; break;
+        }
+
+        var frameW = ViewModel.PreviewFrameWidth;
+        var frameH = ViewModel.PreviewFrameHeight;
+        const int minSize = 8;
+        x = Math.Clamp(x, 0, frameW - minSize);
+        y = Math.Clamp(y, 0, frameH - minSize);
+        w = Math.Clamp(w, minSize, frameW - x);
+        h = Math.Clamp(h, minSize, frameH - y);
+
+        ViewModel.SetCropRegion(new CropRegion { X = x, Y = y, Width = w, Height = h });
+    }
+
+    private void CropHandle_OnDragStarted(object sender, DragStartedEventArgs e)
+    {
+        // Handles capture their own mouse during the drag — make sure the canvas doesn't also think
+        // a new-rectangle draw is in progress underneath.
+        _dragging = false;
+        _movingCrop = false;
     }
 
     private void SetCropTextBoxes(double displayX, double displayY, double displayW, double displayH)
@@ -192,26 +255,80 @@ public partial class MainWindow : Window
         return new Point(x, y);
     }
 
+    private bool IsInsideCurrentCrop(Point imagePoint) =>
+        ViewModel.CropWidth > 0 && ViewModel.CropHeight > 0 &&
+        imagePoint.X >= ViewModel.CropX && imagePoint.X <= ViewModel.CropX + ViewModel.CropWidth &&
+        imagePoint.Y >= ViewModel.CropY && imagePoint.Y <= ViewModel.CropY + ViewModel.CropHeight;
+
     private void CropOverlayCanvas_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (ViewModel.PreviewFrameWidth <= 0) return;
-        _dragging = true;
-        _dragStartImagePoint = ScreenToImagePoint(e.GetPosition(CropOverlayCanvas));
+        var point = ScreenToImagePoint(e.GetPosition(CropOverlayCanvas));
+
+        if (IsInsideCurrentCrop(point))
+        {
+            // Grabbing inside the existing rectangle moves it instead of starting a brand new one.
+            _movingCrop = true;
+            _moveStartMouseImagePoint = point;
+            _moveStartCrop = new CropRegion { X = ViewModel.CropX, Y = ViewModel.CropY, Width = ViewModel.CropWidth, Height = ViewModel.CropHeight };
+        }
+        else
+        {
+            _dragging = true;
+            _dragStartImagePoint = point;
+        }
         CropOverlayCanvas.CaptureMouse();
     }
 
     private void CropOverlayCanvas_OnMouseMove(object sender, MouseEventArgs e)
     {
+        if (_movingCrop)
+        {
+            var current = ScreenToImagePoint(e.GetPosition(CropOverlayCanvas));
+            var dx = (int)Math.Round(current.X - _moveStartMouseImagePoint.X);
+            var dy = (int)Math.Round(current.Y - _moveStartMouseImagePoint.Y);
+
+            var frameW = ViewModel.PreviewFrameWidth;
+            var frameH = ViewModel.PreviewFrameHeight;
+            var x = Math.Clamp(_moveStartCrop.X + dx, 0, Math.Max(0, frameW - _moveStartCrop.Width));
+            var y = Math.Clamp(_moveStartCrop.Y + dy, 0, Math.Max(0, frameH - _moveStartCrop.Height));
+
+            var (scale, offsetX, offsetY) = GetPreviewTransform();
+            if (scale <= 0) return;
+            CropRectShape.Visibility = Visibility.Visible;
+            Canvas.SetLeft(CropRectShape, offsetX + x * scale);
+            Canvas.SetTop(CropRectShape, offsetY + y * scale);
+            SetCropTextBoxes(x * scale, y * scale, _moveStartCrop.Width * scale, _moveStartCrop.Height * scale);
+            return;
+        }
+
         if (!_dragging) return;
-        var current = ScreenToImagePoint(e.GetPosition(CropOverlayCanvas));
-        DrawLiveDragRect(_dragStartImagePoint, current);
+        var currentPoint = ScreenToImagePoint(e.GetPosition(CropOverlayCanvas));
+        DrawLiveDragRect(_dragStartImagePoint, currentPoint);
     }
 
     private void CropOverlayCanvas_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        CropOverlayCanvas.ReleaseMouseCapture();
+
+        if (_movingCrop)
+        {
+            _movingCrop = false;
+            var current = ScreenToImagePoint(e.GetPosition(CropOverlayCanvas));
+            var dx = (int)Math.Round(current.X - _moveStartMouseImagePoint.X);
+            var dy = (int)Math.Round(current.Y - _moveStartMouseImagePoint.Y);
+
+            var frameW = ViewModel.PreviewFrameWidth;
+            var frameH = ViewModel.PreviewFrameHeight;
+            var x = Math.Clamp(_moveStartCrop.X + dx, 0, Math.Max(0, frameW - _moveStartCrop.Width));
+            var y = Math.Clamp(_moveStartCrop.Y + dy, 0, Math.Max(0, frameH - _moveStartCrop.Height));
+
+            ViewModel.SetCropRegion(new CropRegion { X = x, Y = y, Width = _moveStartCrop.Width, Height = _moveStartCrop.Height });
+            return;
+        }
+
         if (!_dragging) return;
         _dragging = false;
-        CropOverlayCanvas.ReleaseMouseCapture();
 
         var end = ScreenToImagePoint(e.GetPosition(CropOverlayCanvas));
         var x0 = (int)Math.Min(_dragStartImagePoint.X, end.X);

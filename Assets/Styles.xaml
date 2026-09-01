@@ -168,4 +168,17 @@
         </Setter>
     </Style>
 
+    <!-- Small square drag-handle used at the crop rectangle's corners for mouse resize -->
+    <Style x:Key="CropHandleStyle" TargetType="Thumb">
+        <Setter Property="Width" Value="10"/>
+        <Setter Property="Height" Value="10"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border Background="White" BorderBrush="{StaticResource AccentBrush}" BorderThickness="2" CornerRadius="2"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

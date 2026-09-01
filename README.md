@@ -1,4 +1,4 @@
-# 유튜브 악보 메이커 v2.1.0
+# 유튜브 악보 메이커 v2.2.0
 
 유튜브 강의/연주 영상에 나오는 악보 화면을 자동으로 캡처해 하나의 PDF로 모아주는 Windows 데스크톱 앱입니다.
 
@@ -33,7 +33,7 @@ dotnet publish -c Release -r win-x64 --self-contained true `
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
 ```
 
-`publish/유튜브 악보 메이커 v2.1.0.exe` 하나만 복사해서 배포하면 됩니다. 미리 빌드된 실행 파일은
+`publish/유튜브 악보 메이커 v2.2.0.exe` 하나만 복사해서 배포하면 됩니다. 미리 빌드된 실행 파일은
 [Releases](../../releases) 페이지에서 받을 수 있습니다.
 
 ## 구조

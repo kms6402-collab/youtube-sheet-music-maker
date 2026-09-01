@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:ScoreCap.ViewModels"
         xmlns:conv="clr-namespace:ScoreCap.Converters"
         xmlns:models="clr-namespace:ScoreCap.Models"
-        Title="{Binding ProjectDisplayName, StringFormat='유튜브 악보 메이커 v2.1.0 – {0}'}" Height="968" Width="1480"
+        Title="{Binding ProjectDisplayName, StringFormat='유튜브 악보 메이커 v2.2.0 – {0}'}" Height="968" Width="1480"
         MinHeight="640" MinWidth="1100"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource WindowBackgroundBrush}"
@@ -69,14 +69,15 @@
                 BorderThickness="0,0,0,1" Padding="16,10">
             <DockPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Bottom" Margin="10,0,0,0">
-                    <Button Content="검색" Command="{Binding OpenSearchCommand}" Margin="0,0,8,0"/>
-                    <Button Content="영상 로드" Command="{Binding LoadVideoCommand}" Margin="0,0,8,0"/>
-                    <Button Content="자동 감지 시작" Style="{StaticResource PrimaryButtonStyle}"
+                    <Button Content="검색" Height="38" Command="{Binding OpenSearchCommand}" Margin="0,0,8,0"/>
+                    <Button Content="영상 로드" Height="38" Command="{Binding LoadVideoCommand}" Margin="0,0,8,0"/>
+                    <Button Content="자동 감지 시작" Height="38" Style="{StaticResource PrimaryButtonStyle}"
                             Command="{Binding StartDetectionCommand}"/>
                 </StackPanel>
                 <StackPanel>
                     <TextBlock Text="유튜브 주소" Style="{StaticResource LabelStyle}"/>
-                    <TextBox Text="{Binding YoutubeUrl, UpdateSourceTrigger=PropertyChanged}"
+                    <TextBox Height="38" Padding="10,4" VerticalContentAlignment="Center"
+                             Text="{Binding YoutubeUrl, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="https://www.youtube.com/watch?v=..."/>
                 </StackPanel>
             </DockPanel>
@@ -109,6 +110,14 @@
                                         MouseLeftButtonUp="CropOverlayCanvas_OnMouseLeftButtonUp">
                                     <Rectangle x:Name="CropRectShape" Stroke="#3B9CFF" StrokeThickness="2"
                                                StrokeDashArray="4 2" Fill="#333B9CFF" IsHitTestVisible="False"/>
+                                    <Thumb x:Name="TopLeftHandle" Style="{StaticResource CropHandleStyle}" Cursor="SizeNWSE"
+                                           Visibility="Collapsed" DragDelta="CropHandle_OnDragDelta" DragStarted="CropHandle_OnDragStarted" Tag="TopLeft"/>
+                                    <Thumb x:Name="TopRightHandle" Style="{StaticResource CropHandleStyle}" Cursor="SizeNESW"
+                                           Visibility="Collapsed" DragDelta="CropHandle_OnDragDelta" DragStarted="CropHandle_OnDragStarted" Tag="TopRight"/>
+                                    <Thumb x:Name="BottomLeftHandle" Style="{StaticResource CropHandleStyle}" Cursor="SizeNESW"
+                                           Visibility="Collapsed" DragDelta="CropHandle_OnDragDelta" DragStarted="CropHandle_OnDragStarted" Tag="BottomLeft"/>
+                                    <Thumb x:Name="BottomRightHandle" Style="{StaticResource CropHandleStyle}" Cursor="SizeNWSE"
+                                           Visibility="Collapsed" DragDelta="CropHandle_OnDragDelta" DragStarted="CropHandle_OnDragStarted" Tag="BottomRight"/>
                                 </Canvas>
                                 <TextBlock Text="영상을 로드하면 미리보기가 표시됩니다" Foreground="#9FB3C0" FontSize="11"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -161,7 +170,7 @@
                                              Style="{StaticResource ChipRadioButtonStyle}"
                                              Command="{Binding SetFullFrameCropCommand}"/>
                             </UniformGrid>
-                            <TextBlock Text="미리보기 위에서 드래그해도 크롭 영역을 지정할 수 있습니다." Style="{StaticResource LabelStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                            <TextBlock Text="미리보기 위에서 드래그하여 영역 지정" Style="{StaticResource LabelStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
 
@@ -212,7 +221,7 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="70"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="하단 다듬기 (px) — 캡처 맨 아래 실선 제거"
+                                <TextBlock Grid.Column="0" Text="캡처 하단 실선 제거"
                                            VerticalAlignment="Center" Style="{StaticResource LabelStyle}" Margin="0" TextWrapping="Wrap"/>
                                 <TextBox Grid.Column="1" Text="{Binding Detection.TrimBottomPx, UpdateSourceTrigger=PropertyChanged}"/>
                             </Grid>
@@ -251,7 +260,8 @@
 
                 <Border Grid.Row="1" Style="{StaticResource CardStyle}" Padding="6">
                     <ListBox x:Name="CaptureListBox" ItemsSource="{Binding CapturesView}" SelectionMode="Extended"
-                             BorderThickness="0" Background="Transparent" ScrollViewer.CanContentScroll="False">
+                             BorderThickness="0" Background="Transparent" ScrollViewer.CanContentScroll="False"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <UniformGrid Columns="5"/>
@@ -263,7 +273,7 @@
                                         BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1" CornerRadius="6">
                                     <StackPanel Opacity="{Binding IsDuplicate, Converter={StaticResource DupOpacity}}">
                                         <Grid>
-                                            <Image Source="{Binding Thumbnail}" Height="100" Stretch="Uniform" Margin="6,6,6,0"/>
+                                            <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="6,6,6,0"/>
                                             <CheckBox IsChecked="{Binding IsIncluded}" HorizontalAlignment="Left" VerticalAlignment="Top"
                                                       Margin="8,8,0,0" ToolTip="PDF에 포함"/>
                                         </Grid>
