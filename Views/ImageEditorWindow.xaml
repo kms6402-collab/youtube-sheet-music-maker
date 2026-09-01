@@ -16,16 +16,62 @@
         <!-- Toolbar -->
         <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="10" Margin="0,0,0,10">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="도구" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource LabelStyle}"/>
-                <RadioButton x:Name="RectToolButton" Content="사각형 지우개" GroupName="EditTool" Margin="0,0,4,0"
-                             Style="{StaticResource ChipRadioButtonStyle}" Checked="ToolRadioButton_OnChecked"/>
-                <RadioButton x:Name="BrushToolButton" Content="붓 지우개" GroupName="EditTool" Margin="4,0,20,0"
-                             Style="{StaticResource ChipRadioButtonStyle}" Checked="ToolRadioButton_OnChecked"/>
 
-                <TextBlock Text="붓 굵기" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource LabelStyle}"/>
+                <!-- 삭제 그룹 -->
+                <Border BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="0,0,10,0">
+                    <StackPanel>
+                        <TextBlock Text="삭제" Style="{StaticResource LabelStyle}" Margin="0,0,0,4" HorizontalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="RectToolButton" GroupName="EditTool" Style="{StaticResource IconToolButtonStyle}"
+                                         Checked="ToolRadioButton_OnChecked"
+                                         ToolTip="사각형 지우개 — 드래그한 사각 영역을 지웁니다">
+                                <TextBlock Text="▭"/>
+                            </RadioButton>
+                            <RadioButton x:Name="BrushToolButton" GroupName="EditTool" Style="{StaticResource IconToolButtonStyle}"
+                                         Checked="ToolRadioButton_OnChecked"
+                                         ToolTip="붓 지우개 — 마우스로 칠한 부분을 지웁니다">
+                                <TextBlock Text="○"/>
+                            </RadioButton>
+                            <RadioButton x:Name="LineToolButton" GroupName="EditTool" Style="{StaticResource IconToolButtonStyle}"
+                                         Checked="ToolRadioButton_OnChecked"
+                                         ToolTip="선 지우기 — 시작점에서 끝점까지 직선을 따라 지웁니다">
+                                <TextBlock Text="─" FontWeight="Bold"/>
+                            </RadioButton>
+                            <Button x:Name="AutoDetectButton" Style="{StaticResource IconActionButtonStyle}"
+                                    Click="AutoDetectButton_OnClick"
+                                    ToolTip="자동 인식(실험적) — 한글로 보이는 부분을 자동으로 찾아 지웁니다">
+                                <TextBlock Text="자동" FontSize="11" FontWeight="SemiBold"/>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 그리기 그룹 -->
+                <Border BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="0,0,20,0">
+                    <StackPanel>
+                        <TextBlock Text="그리기" Style="{StaticResource LabelStyle}" Margin="0,0,0,4" HorizontalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="DrawToolButton" GroupName="EditTool" Style="{StaticResource IconToolButtonStyle}"
+                                         Checked="ToolRadioButton_OnChecked"
+                                         ToolTip="붓 그리기 — 검은색으로 자유롭게 다시 그립니다">
+                                <TextBlock Text="✎"/>
+                            </RadioButton>
+                            <RadioButton x:Name="TextToolButton" GroupName="EditTool" Style="{StaticResource IconToolButtonStyle}"
+                                         Checked="ToolRadioButton_OnChecked"
+                                         ToolTip="텍스트 입력 — 클릭한 위치에 글자를 입력합니다">
+                                <TextBlock Text="T" FontWeight="Bold"/>
+                            </RadioButton>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock x:Name="SizeSliderLabel" Text="굵기" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource LabelStyle}"/>
                 <Slider x:Name="BrushSizeSlider" Width="120" Minimum="6" Maximum="70" Value="24" VerticalAlignment="Center"/>
 
-                <Button Content="실행 취소" Margin="20,0,8,0" Click="UndoButton_OnClick"/>
+                <Button x:Name="UndoButton" Style="{StaticResource IconActionButtonStyle}" Margin="20,0,8,0"
+                        Click="UndoButton_OnClick" ToolTip="실행 취소">
+                    <TextBlock Text="↶" FontSize="18"/>
+                </Button>
                 <Button Content="원본으로 되돌리기" Click="ResetButton_OnClick"/>
             </StackPanel>
         </Border>
@@ -42,6 +88,8 @@
                         MouseLeave="OverlayCanvas_OnMouseLeave">
                     <Rectangle x:Name="RectDragPreview" Stroke="#3B9CFF" StrokeThickness="2"
                                StrokeDashArray="4 2" Fill="#333B9CFF" IsHitTestVisible="False" Visibility="Collapsed"/>
+                    <Line x:Name="LineDragPreview" Stroke="#3B9CFF" StrokeThickness="3" StrokeDashArray="4 2"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" IsHitTestVisible="False" Visibility="Collapsed"/>
                     <Ellipse x:Name="BrushCursor" Stroke="#3B9CFF" StrokeThickness="1.5" IsHitTestVisible="False" Visibility="Collapsed"/>
                 </Canvas>
             </Grid>
